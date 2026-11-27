@@ -29,7 +29,11 @@ async def _queue_digests(db, settings):
         try:
             await queue_digest(db, settings, user_id)
         except Exception as error:  # noqa: BLE001 - preserve retry state and keep the worker running
-            logger.warning("Digest queue failure type=%s", type(error).__name__)
+            logger.warning(
+                "Digest queue failure user_id=%s type=%s",
+                user_id,
+                type(error).__name__,
+            )
 
 
 async def run_once(db, settings):

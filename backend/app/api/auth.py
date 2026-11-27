@@ -26,6 +26,7 @@ async def login(body: TokenRequest, request: Request, response: Response, db=Dep
         message = "登录尝试过多，请稍后重试" if error == "RATE_LIMITED" else "邮箱或密码错误"
         raise ServiceError(error, message)
     from app.api.workspace import set_session_cookie
+
     set_session_cookie(response, request, token)
     return TokenResponse(
         access_token=token,
@@ -47,7 +48,9 @@ async def heartbeat(actor=Depends(current_user), db=Depends(database)):
 async def logout(request: Request, actor=Depends(current_user), db=Depends(database)):
     await accounts.logout(db, actor, *request_info(request))
     response = Response(status_code=204)
-    response.delete_cookie("memory_session", path="/")
+    from app.api.workspace import clear_session_cookie
+
+    clear_session_cookie(response, request)
     return response
 
 
@@ -57,5 +60,7 @@ async def password(
 ):
     await accounts.change_password(db, actor, body, *request_info(request))
     response = Response(status_code=204)
-    response.delete_cookie("memory_session", path="/")
+    from app.api.workspace import clear_session_cookie
+
+    clear_session_cookie(response, request)
     return response

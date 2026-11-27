@@ -6,6 +6,7 @@ from dataclasses import replace
 from pathlib import Path
 import sys
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 from uuid import uuid4
@@ -14,7 +15,7 @@ import test_core_api as core
 
 from app.telemetry import Telemetry
 from app.config import Settings
-from app.services.admin_backup import _postgres_environment
+from app.services.admin_backup import _postgres_environment, backup_location
 from app.services.common import ServiceError
 
 
@@ -39,6 +40,25 @@ class TelemetryTests(unittest.TestCase):
             self.assertEqual(len(summary["buckets"]), 2)
             clock[0] += 120
             self.assertIsNone(state.snapshot(2)["p95_latency_ms"])
+
+    def test_backup_location_rejects_symlinked_dump_tool(self):
+        with TemporaryDirectory() as directory:
+            tool = Path(directory) / "pg_dump"
+            tool.write_text("#!/bin/sh\n", encoding="utf-8")
+            link = Path(directory) / "pg_dump-link"
+            link.symlink_to(tool)
+
+            def settings_for(path):
+                values = {
+                    "ADMIN_BACKUP_DIRECTORY": directory,
+                    "ADMIN_PG_DUMP_PATH": str(path),
+                }
+                return SimpleNamespace(get=lambda key, default=None: values.get(key, default))
+
+            self.assertIsNone(backup_location(settings_for(link)))
+            located = backup_location(settings_for(tool))
+            self.assertIsNotNone(located)
+            self.assertEqual(located[1], tool)
 
     def test_pg_dump_requires_explicit_target_matching_application_dsn(self):
         for url in ("postgresql:///memory_os_test", "postgresql://tester@127.0.0.1/memory_os_test"):

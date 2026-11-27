@@ -14,10 +14,11 @@
 
 import { useMemo, useState } from 'react';
 import { api, newIdempotencyKey } from '@/lib/api';
+import { useAuth } from '@/components/AuthProvider';
 import { useAsyncAction, useQuery, useSubjects } from '@/lib/hooks';
 import { EmptyView, ErrorView, QueryView } from '@/components/States';
 import { ReviewCard } from '@/components/review/ReviewCard';
-import { formatDate, formatDateTime, localTimezone, todayLocalDate } from '@/lib/format';
+import { accountDate, formatDate, formatDateTime } from '@/lib/format';
 import { TASK_STATUS_LABELS, taskStatusTone } from '@/lib/labels';
 import type { DailyTaskRead, Page } from '@/types/api';
 
@@ -25,8 +26,9 @@ import type { DailyTaskRead, Page } from '@/types/api';
 const DAILY_LIMIT = 30;
 
 export default function ReviewPage() {
-  const localDate = useMemo(() => todayLocalDate(), []);
-  const timezone = useMemo(() => localTimezone(), []);
+  const { user } = useAuth();
+  const timezone = user?.timezone;
+  const localDate = useMemo(() => accountDate(timezone), [timezone]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const tasksQuery = useQuery<Page<DailyTaskRead>>(
@@ -34,14 +36,16 @@ export default function ReviewPage() {
     [localDate],
   );
   const subjects = useSubjects();
-  const generate = useAsyncAction((key: string) =>
-    api.generateReviewBatch(
+  const generate = useAsyncAction((key: string) => {
+    if (!timezone) return Promise.reject(new Error('账号时区尚未载入'));
+    return api.generateReviewBatch(
       { local_date: localDate, timezone, daily_limit: DAILY_LIMIT },
       key,
-    ),
-  );
+    );
+  });
 
   const handleGenerate = async () => {
+    if (!timezone) return;
     const res = await generate.run(newIdempotencyKey());
     if (res.ok) {
       setSelectedId(null);
@@ -56,14 +60,14 @@ export default function ReviewPage() {
           <div>
             <h1 className="page-title">今日复习</h1>
             <p className="page-sub">
-              本地日期 {formatDate(localDate)} · 时区 {timezone} · 任务来自真实接口
+              账号日期 {formatDate(localDate)} · 时区 {timezone ?? '—'} · 任务来自真实接口
             </p>
           </div>
           <div className="page-actions">
             <button
               type="button"
               className="btn btn--primary"
-              disabled={generate.pending}
+              disabled={generate.pending || !timezone}
               onClick={handleGenerate}
             >
               {generate.pending ? '生成中…' : '生成今日复习'}

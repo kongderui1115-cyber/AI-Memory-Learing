@@ -16,10 +16,11 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/components/AuthProvider';
 import { useQuery } from '@/lib/hooks';
 import { QueryView } from '@/components/States';
 import { HeatmapCalendar, TrendChart } from '@/components/dashboard/Charts';
-import { formatDate, formatDateTime, formatPercent, localDateRange } from '@/lib/format';
+import { accountDateRange, formatDate, formatDateTime, formatPercent } from '@/lib/format';
 import { RATING_LABELS, STRATEGY_LABELS } from '@/lib/labels';
 import type {
   Page,
@@ -46,7 +47,8 @@ const EMPTY_FILTERS: Filters = {
 };
 
 export default function StatisticsPage() {
-  const defaultRange = useMemo(() => localDateRange(30), []);
+  const { user } = useAuth();
+  const defaultRange = useMemo(() => accountDateRange(30, user?.timezone), [user?.timezone]);
   const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
   const [applied, setApplied] = useState<Filters>(EMPTY_FILTERS);
   const [limit, setLimit] = useState(20);

@@ -34,8 +34,9 @@ def backup_location(settings):
     if not directory_value or not tool_value:
         return None
     directory, tool = Path(directory_value), Path(tool_value)
-    if not (directory.is_absolute() and directory.is_dir() and not directory.is_symlink()
-            and tool.is_absolute() and tool.is_file()):
+    directory_ready = directory.is_absolute() and directory.is_dir() and not directory.is_symlink()
+    tool_ready = tool.is_absolute() and tool.is_file() and not tool.is_symlink()
+    if not (directory_ready and tool_ready):
         return None
     return directory, tool
 

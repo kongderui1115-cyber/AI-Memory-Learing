@@ -19,10 +19,11 @@ import Link from 'next/link';
 import { useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
 import { api } from '@/lib/api';
+import { useAuth } from '@/components/AuthProvider';
 import { useQuery } from '@/lib/hooks';
 import { QueryView } from '@/components/States';
 import { HeatmapCalendar, TrendChart } from '@/components/dashboard/Charts';
-import { formatDate, formatPercent, localDateRange, todayLocalDate } from '@/lib/format';
+import { accountDate, accountDateRange, formatDate, formatPercent } from '@/lib/format';
 import { TASK_STATUS_LABELS, taskStatusTone } from '@/lib/labels';
 import type { DailyTaskRead, Page, StatisticsRead, SubjectRead } from '@/types/api';
 
@@ -38,9 +39,11 @@ interface SubjectStatsData {
 }
 
 export default function DashboardPage() {
-  const today = useMemo(() => todayLocalDate(), []);
-  const [fromDate, setFromDate] = useState(() => localDateRange(30).from);
-  const [toDate, setToDate] = useState(() => localDateRange(30).to);
+  const { user } = useAuth();
+  const timezone = user?.timezone;
+  const today = useMemo(() => accountDate(timezone), [timezone]);
+  const [fromDate, setFromDate] = useState(() => accountDateRange(30, timezone).from);
+  const [toDate, setToDate] = useState(() => accountDateRange(30, timezone).to);
   const [draftFrom, setDraftFrom] = useState(fromDate);
   const [draftTo, setDraftTo] = useState(toDate);
   const [rangeError, setRangeError] = useState<string | null>(null);
@@ -86,7 +89,7 @@ export default function DashboardPage() {
   };
 
   const setPreset = (days: number) => {
-    const range = localDateRange(days);
+    const range = accountDateRange(days, timezone);
     setDraftFrom(range.from);
     setDraftTo(range.to);
     setFromDate(range.from);
