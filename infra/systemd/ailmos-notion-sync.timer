@@ -1,0 +1,12 @@
+[Unit]
+Description=Trigger AI Learning Memory OS Notion incremental sync
+
+[Timer]
+OnBootSec=5min
+# 对应 .env 的 NOTION_SYNC_INTERVAL_MINUTES（默认 60）；修改间隔时同步改这一行
+OnUnitActiveSec=60min
+Persistent=true
+Unit=ailmos-worker@sync-notion.service
+
+[Install]
+WantedBy=timers.target

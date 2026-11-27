@@ -1,0 +1,21 @@
+[Unit]
+Description=AI Learning Memory OS - Next.js frontend
+Documentation=file:///srv/ailmos/DEPLOYMENT.md
+After=network-online.target ailmos-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ailmos
+Group=ailmos
+WorkingDirectory=/srv/ailmos/frontend
+EnvironmentFile=/etc/ailmos/env
+# 生产模式：迁移前需先执行 pnpm install && pnpm build
+ExecStart=/usr/bin/pnpm start -p ${FRONTEND_PORT}
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/ailmos/frontend.log
+StandardError=append:/var/log/ailmos/frontend.err.log
+
+[Install]
+WantedBy=multi-user.target

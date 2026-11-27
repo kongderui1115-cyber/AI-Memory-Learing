@@ -1,0 +1,66 @@
+# --- 密钥 / 本地配置（绝不入库）---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+*.pfx
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Node / Next.js ---
+node_modules/
+.next/
+.next-*/
+out/
+*.tsbuildinfo
+.pnpm-store/
+
+# --- 并行开发隔离目录 ---
+.worktrees/
+
+# --- 日志 / 运行时数据 ---
+logs/
+*.log
+data/
+backups/
+*.dump
+*.backup
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Codex / 探测临时文件 ---
+.codex_probe*.txt
+.codex-probe*
+
+# --- 编辑器 / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.venv-verify/
+
+.local-test/
+
+.local-tools/
+.workbuddy-ai/
+node_modules.offline-attempt/
+
+# Isolated frontend browser-test build
+/frontend/.next-test/

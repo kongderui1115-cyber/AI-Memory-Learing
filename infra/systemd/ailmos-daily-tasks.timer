@@ -1,0 +1,11 @@
+[Unit]
+Description=AI Learning Memory OS daily review task generation (UTC 00:05)
+
+[Timer]
+# 对应 .env 的 DAILY_TASKS_AT（UTC）；业务时间统一 UTC 带时区存储
+OnCalendar=*-*-* 00:05:00 UTC
+Persistent=true
+Unit=ailmos-worker@generate-daily-tasks.service
+
+[Install]
+WantedBy=timers.target

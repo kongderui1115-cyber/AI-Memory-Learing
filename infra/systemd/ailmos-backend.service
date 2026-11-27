@@ -1,0 +1,22 @@
+[Unit]
+Description=AI Learning Memory OS - FastAPI backend (uvicorn)
+Documentation=file:///srv/ailmos/DEPLOYMENT.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ailmos
+Group=ailmos
+WorkingDirectory=/srv/ailmos/backend
+# 环境变量统一放这里（权限 600），与 Windows 的 .env 等价；不写入代码、不入库、不入 Git
+EnvironmentFile=/etc/ailmos/env
+# ASGI 入口可用 UVICORN_APP 覆盖；端口全部来自环境变量，不写死
+ExecStart=/srv/ailmos/.venv/bin/python -m uvicorn ${UVICORN_APP} --host ${APP_HOST} --port ${APP_PORT}
+Restart=on-failure
+RestartSec=5
+StandardOutput=append:/var/log/ailmos/backend.log
+StandardError=append:/var/log/ailmos/backend.err.log
+
+[Install]
+WantedBy=multi-user.target

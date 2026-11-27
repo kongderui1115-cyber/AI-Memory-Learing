@@ -1,0 +1,17 @@
+# AI Learning Memory OS — crontab 示例（systemd timer 的替代方案，FR-12）
+# 与 systemd timer 二选一，不要同时启用，否则任务会重复执行。
+# 所有路径仅为示例，迁移时替换为实际部署目录；时间按 UTC（建议设置 CRON_TZ=UTC）。
+# 与 Windows run-worker.ps1 -Job <name> 等价，调用同一业务 CLI：python -m app.worker <job>
+# 凭据放在 /etc/ailmos/env（权限 600），由 worker 进程读取；不写入 crontab、不入库、不入 Git。
+
+SHELL=/bin/bash
+PATH=/usr/local/bin:/usr/bin:/bin
+
+# Notion 增量同步：每 60 分钟（对应 NOTION_SYNC_INTERVAL_MINUTES=60；改 */30 即 30 分钟）
+0 * * * * cd /srv/ailmos/backend && /srv/ailmos/.venv/bin/python -m app.worker sync-notion >> /var/log/ailmos/worker.log 2>&1
+
+# 每日复习任务生成：每天 00:05 UTC（对应 DAILY_TASKS_AT）
+5 0 * * * cd /srv/ailmos/backend && /srv/ailmos/.venv/bin/python -m app.worker generate-daily-tasks >> /var/log/ailmos/worker.log 2>&1
+
+# 每日推送：每天 08:00 UTC（对应 DAILY_DIGEST_AT）
+0 8 * * * cd /srv/ailmos/backend && /srv/ailmos/.venv/bin/python -m app.worker send-daily-digest >> /var/log/ailmos/worker.log 2>&1

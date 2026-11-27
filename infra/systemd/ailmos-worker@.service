@@ -1,0 +1,19 @@
+[Unit]
+Description=AI Learning Memory OS worker (%i)
+Documentation=file:///srv/ailmos/DEPLOYMENT.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ailmos
+Group=ailmos
+WorkingDirectory=/srv/ailmos/backend
+EnvironmentFile=/etc/ailmos/env
+# 与 Windows run-worker.ps1 -Job <name> 等价的 CLI 入口；%i = sync-notion / generate-daily-tasks / send-daily-digest
+ExecStart=/srv/ailmos/.venv/bin/python -m app.worker %i
+StandardOutput=append:/var/log/ailmos/worker-%i.log
+StandardError=append:/var/log/ailmos/worker-%i.err.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=AI Learning Memory OS daily digest push (UTC 08:00)
+
+[Timer]
+# 对应 .env 的 DAILY_DIGEST_AT（UTC）
+OnCalendar=*-*-* 08:00:00 UTC
+Persistent=true
+Unit=ailmos-worker@send-daily-digest.service
+
+[Install]
+WantedBy=timers.target
