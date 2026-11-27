@@ -2,7 +2,7 @@
 
 import type { DateTime, DateOnly } from '@/types/api';
 
-/** 以浏览器本地时区生成 YYYY-MM-DD，用于 local_date 参数。 */
+/** 以浏览器本地时区生成 YYYY-MM-DD。复习与统计的“今天”应优先使用账号时区。 */
 export function todayLocalDate(): DateOnly {
   const now = new Date();
   const y = now.getFullYear();
@@ -67,6 +67,42 @@ export function formatPercent(value: number): string {
 export function splitList(input: string): string[] {
   const parts = input.split(/[,，、;；\s]+/).map((s) => s.trim()).filter(Boolean);
   return Array.from(new Set(parts));
+}
+
+/** 账号时区的 YYYY-MM-DD。未配置或时区名无效时回退到浏览器本地日期。 */
+export function accountDate(timeZone: string | null | undefined, now = new Date()): DateOnly {
+  if (!timeZone) return todayLocalDate();
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(now);
+  } catch {
+    return todayLocalDate();
+  }
+}
+
+function shiftIsoDate(iso: DateOnly, deltaDays: number): DateOnly {
+  const [year, month, day] = iso.split('-').map(Number);
+  const utc = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+  utc.setUTCDate(utc.getUTCDate() + deltaDays);
+  const y = utc.getUTCFullYear();
+  const m = String(utc.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(utc.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/** 以账号时区的今天为结束日期，按日历天返回最近 days 天。 */
+export function accountDateRange(
+  days: number,
+  timeZone: string | null | undefined,
+  now = new Date(),
+): { from: DateOnly; to: DateOnly } {
+  const to = accountDate(timeZone, now);
+  const span = Math.max(1, Math.floor(days)) - 1;
+  return { from: shiftIsoDate(to, -span), to };
 }
 
 /** 以今天为结束日期，返回最近 days 天的 [from, to]（均为 YYYY-MM-DD，本地时区）。 */

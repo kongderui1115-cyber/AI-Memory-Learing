@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from fastapi import Response
 from fastapi.testclient import TestClient
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.schema import CreateTable
@@ -57,6 +58,43 @@ class RuntimeTests(unittest.TestCase):
                 self.assertEqual(result.status_code, expected)
                 if expected == 503:
                     self.assertEqual(result.json()["checks"]["database"]["code"], "SCHEMA_VERSION_MISMATCH")
+
+
+class SessionCookieTests(unittest.TestCase):
+    def test_logout_cookie_keeps_the_secure_flag_used_at_login(self):
+        from app.api.workspace import clear_session_cookie, set_session_cookie
+
+        request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    settings=SimpleNamespace(app_env="production", access_token_expire_minutes=30)
+                )
+            ),
+            url=SimpleNamespace(scheme="http"),
+        )
+        created = Response()
+        set_session_cookie(created, request, "token-value")
+        cleared = Response()
+        clear_session_cookie(cleared, request)
+        created_cookie = created.headers["set-cookie"].lower()
+        cleared_cookie = cleared.headers["set-cookie"].lower()
+        self.assertIn("secure", created_cookie)
+        self.assertIn("secure", cleared_cookie)
+        self.assertIn("httponly", cleared_cookie)
+        self.assertIn("samesite=lax", cleared_cookie)
+        self.assertIn("max-age=0", cleared_cookie)
+
+        local = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    settings=SimpleNamespace(app_env="development", access_token_expire_minutes=30)
+                )
+            ),
+            url=SimpleNamespace(scheme="http"),
+        )
+        plain = Response()
+        clear_session_cookie(plain, local)
+        self.assertNotIn("secure", plain.headers["set-cookie"].lower())
 
 
 class WorkerPauseTests(unittest.IsolatedAsyncioTestCase):

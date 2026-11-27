@@ -313,12 +313,29 @@ async def create_knowledge(db, settings, user_id, body, key):
         return await knowledge_read(session, row)
 
 
+async def knowledge_views(session, rows):
+    chapter_ids = {row.chapter_id for row in rows if row.chapter_id}
+    chapters = {}
+    if chapter_ids:
+        loaded = await session.scalars(select(Chapter).where(Chapter.id.in_(chapter_ids)))
+        chapters = {chapter.id: chapter for chapter in loaded}
+    views = []
+    for row in rows:
+        value = KnowledgePointRead.model_validate(row).model_dump(mode="json")
+        value["chapter_id"] = row.chapter_id
+        if row.chapter_id is None:
+            value["source_url"] = None
+        else:
+            chapter = chapters.get(row.chapter_id)
+            if chapter is None or chapter.user_id != row.user_id:
+                raise ServiceError("RESOURCE_NOT_FOUND", "资源不存在")
+            value["source_url"] = chapter.source_url
+        views.append(value)
+    return views
+
+
 async def knowledge_read(session, row):
-    value = KnowledgePointRead.model_validate(row).model_dump(mode="json")
-    value["chapter_id"] = row.chapter_id
-    chapter = await owned(session, Chapter, row.chapter_id, row.user_id) if row.chapter_id else None
-    value["source_url"] = chapter.source_url if chapter else None
-    return value
+    return (await knowledge_views(session, [row]))[0]
 
 
 async def get_knowledge(db, user_id, resource_id):
@@ -338,7 +355,7 @@ async def list_knowledge(db, user_id, *, limit=20, cursor=None, filters=()):
             cursor,
         )
         return {
-            "items": [await knowledge_read(session, row) for row in rows],
+            "items": await knowledge_views(session, rows),
             "next_cursor": cursor,
             "has_more": more,
         }
@@ -418,17 +435,26 @@ async def create_review_item(db, settings, user_id, point_id, body, key):
         return ReviewItemRead.model_validate(row)
 
 
+async def batches_with_tasks(session, rows):
+    grouped = {row.id: [] for row in rows}
+    if grouped:
+        tasks = await session.scalars(
+            select(DailyReviewTask)
+            .where(DailyReviewTask.batch_id.in_(tuple(grouped)))
+            .order_by(DailyReviewTask.position)
+        )
+        for task in tasks:
+            grouped[task.batch_id].append(DailyTaskRead.model_validate(task))
+    return [
+        DailyBatchRead.model_validate(row).model_copy(update={"tasks": grouped[row.id]})
+        for row in rows
+    ]
+
+
 async def batch_read(session, batch):
     await session.flush()
     await session.refresh(batch)
-    rows = await session.scalars(
-        select(DailyReviewTask)
-        .where(DailyReviewTask.batch_id == batch.id)
-        .order_by(DailyReviewTask.position)
-    )
-    return DailyBatchRead.model_validate(batch).model_copy(
-        update={"tasks": [DailyTaskRead.model_validate(row) for row in rows]}
-    )
+    return (await batches_with_tasks(session, [batch]))[0]
 
 
 async def generate_batch(db, settings, user_id, body, key, *, refresh=False):
@@ -510,6 +536,15 @@ async def generate_batch(db, settings, user_id, body, key, *, refresh=False):
         )
         if body.subject_id:
             query = query.where(KnowledgePoint.subject_id == body.subject_id)
+        # priority_hint stays 0, so this matches daily_tasks.rank_candidates:
+        # earlier due, then more lapses, then higher difficulty, then id.
+        # One current review item per point is enforced by uq_review_items_current.
+        query = query.order_by(
+            ScheduleState.due_at.asc(),
+            ScheduleState.lapse_count.desc(),
+            KnowledgePoint.difficulty.desc(),
+            KnowledgePoint.id.asc(),
+        ).limit(remaining)
         candidates = [
             daily_tasks.DueCandidate(
                 str(point.id),
@@ -615,24 +650,73 @@ async def task_action(db, settings, user_id, resource_id, key, action, reason=No
         return await refreshed(session, row, DailyTaskRead)
 
 
+async def task_contents(session, user_id, tasks):
+    point_ids = [task.knowledge_point_id for task in tasks]
+    item_ids = [task.review_item_id for task in tasks if task.review_item_id]
+    points = {}
+    if point_ids:
+        points = {
+            point.id: point
+            for point in (
+                await session.scalars(
+                    select(KnowledgePoint).where(
+                        KnowledgePoint.user_id == user_id,
+                        KnowledgePoint.id.in_(point_ids),
+                    )
+                )
+            ).all()
+        }
+    items = {}
+    if item_ids:
+        items = {
+            item.id: item
+            for item in (
+                await session.scalars(
+                    select(ReviewItem).where(
+                        ReviewItem.user_id == user_id,
+                        ReviewItem.id.in_(item_ids),
+                    )
+                )
+            ).all()
+        }
+    states = {}
+    if point_ids:
+        states = {
+            state.knowledge_point_id: state
+            for state in (
+                await session.scalars(
+                    select(ScheduleState).where(ScheduleState.knowledge_point_id.in_(point_ids))
+                )
+            ).all()
+        }
+    ordered = []
+    for task in tasks:
+        point = points.get(task.knowledge_point_id)
+        if point is None:
+            raise ServiceError("RESOURCE_NOT_FOUND", "资源不存在")
+        if task.review_item_id is not None and items.get(task.review_item_id) is None:
+            raise ServiceError("RESOURCE_NOT_FOUND", "资源不存在")
+        ordered.append(point)
+    views = await knowledge_views(session, ordered)
+    contents = []
+    for task, point, view in zip(tasks, ordered, views, strict=True):
+        item = items.get(task.review_item_id) if task.review_item_id else None
+        state = states.get(point.id)
+        contents.append(
+            {
+                "task": DailyTaskRead.model_validate(task),
+                "knowledge": view,
+                "review_item": ReviewItemRead.model_validate(item) if item else None,
+                "schedule": ScheduleStateRead.model_validate(state) if state else None,
+            }
+        )
+    return contents
+
+
 async def task_content(db, user_id, resource_id):
     async with db.transaction() as session:
         task = await owned(session, DailyReviewTask, resource_id, user_id)
-        point = await owned(session, KnowledgePoint, task.knowledge_point_id, user_id)
-        item = (
-            await owned(session, ReviewItem, task.review_item_id, user_id)
-            if task.review_item_id
-            else None
-        )
-        state = await session.scalar(
-            select(ScheduleState).where(ScheduleState.knowledge_point_id == point.id)
-        )
-        return {
-            "task": DailyTaskRead.model_validate(task),
-            "knowledge": await knowledge_read(session, point),
-            "review_item": ReviewItemRead.model_validate(item) if item else None,
-            "schedule": ScheduleStateRead.model_validate(state) if state else None,
-        }
+        return (await task_contents(session, user_id, [task]))[0]
 
 
 async def update_knowledge(db, settings, user_id, resource_id, body, version):
@@ -679,7 +763,7 @@ async def list_batches(db, user_id, limit, cursor, local_date, status, subject_i
             query = query.where(DailyReviewBatch.subject_id == subject_id)
         rows, cursor, more = await page(session, query, DailyReviewBatch, limit, cursor)
         return {
-            "items": [await batch_read(session, row) for row in rows],
+            "items": await batches_with_tasks(session, rows),
             "next_cursor": cursor,
             "has_more": more,
         }

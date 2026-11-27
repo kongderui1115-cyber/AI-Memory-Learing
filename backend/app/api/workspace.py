@@ -33,6 +33,10 @@ version_dependency = Depends(expected_version)
 key_dependency = Depends(idempotency_key)
 
 
+def _session_cookie_secure(request):
+    return request.app.state.settings.app_env == "production" or request.url.scheme == "https"
+
+
 def set_session_cookie(response, request, token):
     response.set_cookie(
         "memory_session",
@@ -40,8 +44,19 @@ def set_session_cookie(response, request, token):
         httponly=True,
         samesite="lax",
         path="/",
-        secure=request.app.state.settings.app_env == "production" or request.url.scheme == "https",
+        secure=_session_cookie_secure(request),
         max_age=request.app.state.settings.access_token_expire_minutes * 60,
+    )
+
+
+def clear_session_cookie(response, request):
+    # Browsers match Secure/HttpOnly/SameSite/path when deleting a cookie.
+    response.delete_cookie(
+        "memory_session",
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_session_cookie_secure(request),
     )
 
 

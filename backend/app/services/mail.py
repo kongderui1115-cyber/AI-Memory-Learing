@@ -2,6 +2,7 @@
 
 import asyncio
 import hashlib
+import logging
 from datetime import timedelta
 from urllib.parse import urlencode, urlsplit
 from zoneinfo import ZoneInfo
@@ -26,7 +27,9 @@ from app.notifications.template import char_sizer, truncate
 from app.notifications.transports import SmtpEnvelope, SmtplibTransport
 from app.services.common import ServiceError, lock_owner, owned, utcnow
 from app.services.credentials import user_settings
-from app.services.learning import task_content
+from app.services.learning import task_contents
+
+logger = logging.getLogger(__name__)
 
 
 def schedule_lines(state, timezone: ZoneInfo) -> list[str]:
@@ -187,12 +190,12 @@ async def queue_digest(db, settings, user_id):
             ).all()
         }
         pitfalls = await _digest_pitfalls(session, user_id, tasks)
+        contents = await task_contents(session, user_id, tasks)
     public_url = settings.get("PUBLIC_APP_URL", "http://127.0.0.1:3030").rstrip("/")
     if not is_http_link(public_url) or urlsplit(public_url).query or urlsplit(public_url).fragment:
         raise ServiceError("CONFIG_MISSING", "PUBLIC_APP_URL 没有配置有效的学习系统入口")
     lines = [f"{user.display_name}，今天有 {len(tasks)} 个知识点等待复习。", ""]
-    for task in tasks:
-        content = await task_content(db, user_id, task.id)
+    for task, content in zip(tasks, contents, strict=True):
         point = KnowledgeRead.model_validate(content["knowledge"])
         card, state = content["review_item"], content["schedule"]
         lines.extend(
@@ -403,12 +406,21 @@ async def send_daily_digest(db, settings):
                 )
             ).all()
         )
+    failures = 0
     for user_id in ids:
-        await queue_digest(db, settings, user_id)
+        try:
+            await queue_digest(db, settings, user_id)
+        except Exception as error:  # noqa: BLE001 - one account must not block the others
+            failures += 1
+            logger.warning(
+                "Digest queue failure user_id=%s type=%s",
+                user_id,
+                type(error).__name__,
+            )
     outcomes = await send_pending(db, settings)
     return {
         "status": "failed"
-        if any(result["status"] == "failed" for result in outcomes)
+        if failures or any(result["status"] == "failed" for result in outcomes)
         else "succeeded",
         "count": sum(result["status"] == "sent" for result in outcomes),
     }

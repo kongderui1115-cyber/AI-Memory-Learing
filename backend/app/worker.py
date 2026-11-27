@@ -43,7 +43,11 @@ async def generate_daily_tasks(db, settings):
             )
         except Exception as error:  # keep other accounts moving when one account fails
             failures += 1
-            logger.warning("Daily review generation failed type=%s", type(error).__name__)
+            logger.warning(
+                "Daily review generation failed user_id=%s type=%s",
+                user.id,
+                type(error).__name__,
+            )
             continue
         count += len(batch.tasks)
     return {

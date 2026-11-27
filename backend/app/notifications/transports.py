@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import Any
 
+from app.outbound_http import open_authenticated
+
 from .errors import ChannelDeliveryError
 
 _SENSITIVE_KEYWORDS = (
@@ -173,7 +175,8 @@ class UrllibHttpTransport(HttpTransport):
         for key, value in (headers or {}).items():
             req.add_header(key, value)
         try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
+            # Do not follow redirects: a webhook could otherwise bounce onto an internal host.
+            with open_authenticated(req, timeout=timeout) as resp:
                 return HttpResult(
                     status_code=resp.status,
                     body=resp.read().decode("utf-8", errors="replace"),
